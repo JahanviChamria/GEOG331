@@ -37,9 +37,10 @@ Mat.bycol[1,]
 Mat.bycol[,2]
 
 #read in weather station file from the data folder
-#datW <- read.csv("Z:\\jchamria\\data\\noaa_weather\\2011124.csv",
+datW <- read.csv("Z:\\jchamria\\data\\noaa_weather\\2011124.csv",
                  stringsAsFactors = T)
-datW <- read.csv("C:\\Users\\jahan\\OneDrive\\Documents\\GitHub\\data\\2011124.csv",
+#new path used on my personal laptop while doing HW
+#datW <- read.csv("C:\\Users\\jahan\\OneDrive\\Documents\\GitHub\\data\\2011124.csv",
                  stringsAsFactors = T)
 
 #get more information about the dataframe
