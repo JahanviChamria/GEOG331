@@ -37,7 +37,9 @@ Mat.bycol[1,]
 Mat.bycol[,2]
 
 #read in weather station file from the data folder
-datW <- read.csv("Z:\\jchamria\\data\\noaa_weather\\2011124.csv",
+#datW <- read.csv("Z:\\jchamria\\data\\noaa_weather\\2011124.csv",
+                 stringsAsFactors = T)
+datW <- read.csv("C:\\Users\\jahan\\OneDrive\\Documents\\GitHub\\data\\2011124.csv",
                  stringsAsFactors = T)
 
 #get more information about the dataframe
@@ -51,12 +53,17 @@ datW$dateF <- as.Date(datW$DATE, "%Y-%m-%d")
 #and indicating that it should be treated as numeric data
 datW$year <- as.numeric(format(datW$dateF,"%Y"))
 
+#Question 2:
 help(character)
 help(numeric)
 help(integer)
 help(factor)
 
-#create vectors of each type with 5 vectors each
+#create vectors of each type with 5 objects each
+my_char <- c("Asia", "North America", "Europe", "Africa", "South America")
+my_num <- c(c(3.14, 2.71, 1, 0.57, 6.28))
+my_int <- c(1L, 2L, 3L, 4L, 5L)
+my_fac <- factor(c("low", "medium", "high", "medium", "low"))
 
 #find out all unique site names
 unique(datW$NAME)
@@ -89,7 +96,6 @@ averageTemp
 #you will have to reference the level output or look at the row of data to see the character designation.
 datW$siteN <- as.numeric(datW$NAME)
 
-
 #make a histogram for the first site in our levels
 #main= is the title name argument.
 #Here you want to paste the actual name of the factor not the numeric index
@@ -102,10 +108,12 @@ hist(datW$TAVE[datW$siteN == 1],
      col="grey50",
      border="white")
 
+#Question 3
 help(hist)
 help(paste)
 
-#answer q3
+#Question 4
+par(mfrow=c(2,2))
 
 #make a histogram for the first site in our levels, Aberdeen
 #main= is the title name argument.
@@ -136,7 +144,63 @@ abline(v = mean(datW$TAVE[datW$siteN == 1],na.rm=TRUE) + sd(datW$TAVE[datW$siteN
        lty = 3,
        lwd = 3)
 
-#3 more histograms
+#Question 4
+hist(datW$TAVE[datW$siteN == 2],
+     freq=FALSE, 
+     main = paste(levels(datW$NAME)[2]),
+     xlab = "Average daily temperature (degrees C)", 
+     ylab="Relative frequency",
+     col="lightcyan3",
+     border="white")
+abline(v = mean(datW$TAVE[datW$siteN == 2],na.rm=TRUE), 
+       col = "tomato3",
+       lwd = 3)
+abline(v = mean(datW$TAVE[datW$siteN == 2],na.rm=TRUE) - sd(datW$TAVE[datW$siteN == 1],na.rm=TRUE), 
+       col = "tomato3", 
+       lty = 3,
+       lwd = 3)
+abline(v = mean(datW$TAVE[datW$siteN == 2],na.rm=TRUE) + sd(datW$TAVE[datW$siteN == 1],na.rm=TRUE), 
+       col = "tomato3", 
+       lty = 3,
+       lwd = 3)
+
+hist(datW$TAVE[datW$siteN == 5],
+     freq=FALSE, 
+     main = paste(levels(datW$NAME)[5]),
+     xlab = "Average daily temperature (degrees C)", 
+     ylab="Relative frequency",
+     col="thistle3",
+     border="white")
+abline(v = mean(datW$TAVE[datW$siteN == 5],na.rm=TRUE), 
+       col = "tomato3",
+       lwd = 3)
+abline(v = mean(datW$TAVE[datW$siteN == 5],na.rm=TRUE) - sd(datW$TAVE[datW$siteN == 1],na.rm=TRUE), 
+       col = "tomato3", 
+       lty = 3,
+       lwd = 3)
+abline(v = mean(datW$TAVE[datW$siteN == 5],na.rm=TRUE) + sd(datW$TAVE[datW$siteN == 1],na.rm=TRUE), 
+       col = "tomato3", 
+       lty = 3,
+       lwd = 3)
+
+hist(datW$TAVE[datW$siteN == 4],
+     freq=FALSE, 
+     main = paste(levels(datW$NAME)[4]),
+     xlab = "Average daily temperature (degrees C)", 
+     ylab="Relative frequency",
+     col="palegreen3",
+     border="white")
+abline(v = mean(datW$TAVE[datW$siteN == 4],na.rm=TRUE), 
+       col = "tomato3",
+       lwd = 3)
+abline(v = mean(datW$TAVE[datW$siteN == 4],na.rm=TRUE) - sd(datW$TAVE[datW$siteN == 1],na.rm=TRUE), 
+       col = "tomato3", 
+       lty = 3,
+       lwd = 3)
+abline(v = mean(datW$TAVE[datW$siteN == 4],na.rm=TRUE) + sd(datW$TAVE[datW$siteN == 1],na.rm=TRUE), 
+       col = "tomato3", 
+       lty = 3,
+       lwd = 3)
 
 #make a histogram for the first site in our levels
 #main= is the title name argument.
@@ -201,4 +265,95 @@ pnorm(5,
 qnorm(0.95,
       mean(datW$TAVE[datW$siteN == 1],na.rm=TRUE),
       sd(datW$TAVE[datW$siteN == 1],na.rm=TRUE))
+
+#Question 6
+#current climate for Aberdeen 
+current_mean <- mean(datW$TAVE[datW$siteN == 1], na.rm=TRUE)
+current_sd <- sd(datW$TAVE[datW$siteN == 1], na.rm=TRUE)
+
+#climate change: mean increases by 4°C, SD stays same
+future_mean <- current_mean + 4
+future_sd <- current_sd
+
+#current threshold for extreme high temperatures (95th percentile)
+current_threshold <- qnorm(0.95, current_mean, current_sd)
+
+#probability of exceeding current threshold under future climate
+prob_exceed_threshold <- 1 - pnorm(current_threshold, future_mean, future_sd)
+
+#results
+round(current_mean, 2)
+round(current_threshold, 2)
+round(future_mean, 2)
+round(prob_exceed_threshold * 100, 1)
+
+#Question 7
+#histogram of daily precipitation for Aberdeen 
+hist(datW$PRCP[datW$siteN == 1], 
+     freq = FALSE,
+     main = paste(levels(datW$NAME)[1]),
+     xlab = "Daily Precipitation (mm)",
+     ylab = "Relative Frequency",
+     col = "grey50",
+     border = "white",
+     breaks = 50)  
+abline(v = mean(datW$PRCP[datW$siteN == 1], na.rm=TRUE), 
+       col = "red", lwd = 2, lty = 2)
+
+#results
+round(mean(datW$PRCP[datW$siteN == 1], na.rm=TRUE), 2)
+
+
+#Question 8
+#annual precipitation totals for each site and year
+annual_precip <- aggregate(datW$PRCP, 
+                           by = list(datW$NAME, datW$year), 
+                           FUN = "sum", 
+                           na.rm = TRUE)
+colnames(annual_precip) <- c("NAME", "YEAR", "ANNUAL_PRCP")
+#printing values for the first 2 years
+print(head(annual_precip, 10))
+
+#Aberdeen histogram
+aberdeen_annual <- annual_precip[annual_precip$NAME == "ABERDEEN, WA US", ]
+hist(aberdeen_annual$ANNUAL_PRCP,
+     freq = FALSE,
+     main = paste(levels(datW$NAME)[1]),
+     xlab = "Annual Precipitation (mm)",
+     ylab = "Relative Frequency",
+     col = "darkgreen",
+     border = "white")
+abline(v = mean(aberdeen_annual$ANNUAL_PRCP,na.rm=TRUE), 
+       col = "tomato3",
+       lwd = 3)
+abline(v = mean(aberdeen_annual$ANNUAL_PRCP,na.rm=TRUE) - sd(aberdeen_annual$ANNUAL_PRCP,na.rm=TRUE), 
+       col = "tomato3", 
+       lty = 3,
+       lwd = 3)
+abline(v = mean(aberdeen_annual$ANNUAL_PRCP,na.rm=TRUE) + sd(aberdeen_annual$ANNUAL_PRCP,na.rm=TRUE), 
+       col = "tomato3", 
+       lty = 3,
+       lwd = 3)
+
+#results
+mean(aberdeen_annual$ANNUAL_PRCP, na.rm=TRUE)
+
+#Question 9
+#mean annual precipitation for each site
+mean_annual_precip <- aggregate(annual_precip$ANNUAL_PRCP, 
+                                by = list(annual_precip$NAME), 
+                                FUN = "mean", 
+                                na.rm = TRUE)
+colnames(mean_annual_precip) <- c("NAME", "MEAN_ANNUAL_PRCP")
+mean_annual_precip
+
+#mean annual temperatures from earlier calculation
+averageTemp <- aggregate(datW$TAVE, by=list(datW$NAME), FUN="mean", na.rm=TRUE)
+colnames(averageTemp) <- c("NAME","MAAT")
+
+#combine temperature and precipitation data
+climate_summary <- merge(averageTemp, mean_annual_precip, by = "NAME")
+
+#results
+climate_summary
 
