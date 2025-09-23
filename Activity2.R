@@ -41,7 +41,7 @@ datW <- read.csv("Z:\\jchamria\\data\\noaa_weather\\2011124.csv",
                  stringsAsFactors = T)
 #new path used on my personal laptop while doing HW
 #datW <- read.csv("C:\\Users\\jahan\\OneDrive\\Documents\\GitHub\\data\\2011124.csv",
-                 stringsAsFactors = T)
+#                 stringsAsFactors = T)
 
 #get more information about the dataframe
 str(datW)
