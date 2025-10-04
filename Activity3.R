@@ -103,4 +103,162 @@ datW$air.tempQ1 <- ifelse(datW$air.temperature < 0, NA, datW$air.temperature)
 #and throughout the percentiles
 quantile(datW$air.tempQ1)
 
+#look at days with really low air temperature
+datW[datW$air.tempQ1 < 8,]  
 
+#look at days with really high air temperature
+datW[datW$air.tempQ1 > 33,]  
+
+#plot precipitation and lightning strikes on the same plot
+#normalize lighting strikes to match precipitation
+lightscale <- (max(datW$precipitation)/max(datW$lightning.acvitivy)) * datW$lightning.acvitivy
+#make the plot with precipitation and lightning activity marked
+#make it empty to start and add in features
+plot(datW$DD , datW$precipitation, xlab = "Day of Year", ylab = "Precipitation & lightning",
+     type="n")
+#plot precipitation points only when there is precipitation 
+#make the points semi-transparent
+points(datW$DD[datW$precipitation > 0], datW$precipitation[datW$precipitation > 0],
+       col= rgb(95/255,158/255,160/255,.5), pch=15)        
+
+#plot lightning points only when there is lightning     
+points(datW$DD[lightscale > 0], lightscale[lightscale > 0],
+       col= "tomato3", pch=19)
+
+#question 5 (testing that lightscale can be used to subset datW)
+#test that lightscale has the same length as datW using assert from part 1
+assert(length(lightscale) == nrow(datW), 
+       "error: lightscale and datW have different lengths")
+#if the above test passes (no error message), then lightscale can be used to subset datW
+#because they have matching dimensions
+
+#filter out storms in wind and air temperature measurements
+# filter all values with lightning that coincides with rainfall greater than 2mm or only rainfall over 5 mm.    
+#create a new air temp column
+datW$air.tempQ2 <- ifelse(datW$precipitation  >= 2 & datW$lightning.acvitivy >0, NA,
+                          ifelse(datW$precipitation > 5, NA, datW$air.tempQ1))
+
+#question 6 (filtering suspect measurements from wind speed data)
+#create a test to check that the right conditions were filtered
+#test 1: Check that values with precipitation >= 2 AND lightning > 0 were converted to NA
+storm_conditions <- datW$precipitation >= 2 & datW$lightning.acvitivy > 0
+assert(sum(is.na(datW$wind.speedQ1[storm_conditions])) == sum(storm_conditions), 
+       "error: not all storm conditions (precip >= 2 & lightning) were filtered")
+#test 2: Check that values with precipitation > 5 were converted to NA
+heavy_rain <- datW$precipitation > 5
+assert(sum(is.na(datW$wind.speedQ1[heavy_rain])) == sum(heavy_rain),
+       "error: not all heavy rain conditions (precip > 5) were filtered")
+#test 3: Check that values NOT meeting these conditions kept their original values
+safe_conditions <- !(storm_conditions | heavy_rain)
+assert(sum(datW$wind.speedQ1[safe_conditions] == datW$wind.speed[safe_conditions], na.rm=TRUE) == sum(safe_conditions),
+       "error: some safe condition values were incorrectly changed")
+
+#plot wind speed with QA/QC filtering applied
+plot(datW$DD, datW$wind.speedQ1, pch=19, type="b", 
+     xlab="Day of Year", 
+     ylab="Wind Speed (m/s)",
+     main="Wind Speed with Storm Conditions Removed")
+
+#question 7 (check soil sensor reliability before outage)
+
+#find the last day with soil data
+last_day <- max(datW$DD[!is.na(datW$soil.temp)])
+
+#look at last 5 days before it stopped
+last_5_days <- datW[datW$DD > (last_day - 5), ]
+
+#plot soil temp and air temp together
+plot(last_5_days$DD, last_5_days$soil.temp, 
+     type="b", pch=19, col="brown",
+     xlab="Day of Year", 
+     ylab="Temperature (C)",
+     main="Temperature Before Sensor Stopped")
+lines(last_5_days$DD, last_5_days$air.temperature, 
+      type="b", pch=19, col="red")
+legend("topleft", 
+       legend=c("Soil Temp", "Air Temp"), 
+       col=c("brown", "red"), 
+       pch=19)
+
+#plot soil moisture
+plot(last_5_days$DD, last_5_days$soil.moisture,
+     type="b", pch=19, col="blue",
+     xlab="Day of Year", 
+     ylab="Soil Moisture",
+     main="Soil Moisture Before Sensor Stopped")
+
+#question 8 (calculate statistics)
+
+#count total observations after QA/QC
+total_obs <- nrow(datW)
+
+avg_air_temp <- mean(datW$air.tempQ2, na.rm = TRUE)
+avg_wind_speed <- mean(datW$wind.speedQ1, na.rm = TRUE)
+avg_soil_moisture <- mean(datW$soil.moisture, na.rm = TRUE)
+avg_soil_temp <- mean(datW$soil.temp, na.rm = TRUE)
+total_precip <- sum(datW$precipitation, na.rm = TRUE)
+
+#count observations that went into each calculation
+obs_air_temp <- sum(!is.na(datW$air.tempQ2))
+obs_wind_speed <- sum(!is.na(datW$wind.speedQ1))
+obs_soil_moisture <- sum(!is.na(datW$soil.moisture))
+obs_soil_temp <- sum(!is.na(datW$soil.temp))
+obs_precip <- sum(!is.na(datW$precipitation))
+
+#time period
+start_date <- datW$timestamp[1]
+end_date <- datW$timestamp[nrow(datW)]
+
+#round to appropriate decimal places based on sensor accuracy
+print(paste("Study Period:", start_date, "to", end_date))
+print(paste("Total Observations:", total_obs))
+print(paste("Average Air Temperature:", round(avg_air_temp, 1), "°C"))
+print(paste("Observations used:", obs_air_temp))
+print(paste("Average Wind Speed:", round(avg_wind_speed, 1), "m/s"))
+print(paste("Observations used:", obs_wind_speed))
+print(paste("Average Soil Moisture:", round(avg_soil_moisture, 2), "m³/m³"))
+print(paste("Observations used:", obs_soil_moisture))
+print(paste("Average Soil Temperature:", round(avg_soil_temp, 1), "°C"))
+print(paste("Observations used:", obs_soil_temp))
+print(paste("Total Precipitation:", round(total_precip, 1), "mm"))
+print(paste("Observations used:", obs_precip))
+
+#question 9 (plot data)
+
+#find the x-axis range for all plots
+x_min <- min(datW$DD, na.rm = TRUE)
+x_max <- max(datW$DD, na.rm = TRUE)
+
+par(mfrow = c(2, 2))
+
+#plot 1: Soil Moisture
+plot(datW$DD, datW$soil.moisture, 
+     type = "b", pch = 19, col = "blue",
+     xlab = "Day of Year", 
+     ylab = "Soil Moisture (m³/m³)",
+     main = "Soil Moisture",
+     xlim = c(x_min, x_max))
+
+#plot 2: Air Temperature 
+plot(datW$DD, datW$air.tempQ2, 
+     type = "b", pch = 19, col = "red",
+     xlab = "Day of Year", 
+     ylab = "Air Temperature (°C)",
+     main = "Air Temperature",
+     xlim = c(x_min, x_max))
+
+#plot 3: Soil Temperature
+plot(datW$DD, datW$soil.temp, 
+     type = "b", pch = 19, col = "brown",
+     xlab = "Day of Year", 
+     ylab = "Soil Temperature (°C)",
+     main = "Soil Temperature",
+     xlim = c(x_min, x_max))
+
+#plot 4: Precipitation
+plot(datW$DD, datW$precipitation, 
+     type = "h", lwd = 2, col = "darkblue",
+     xlab = "Day of Year", 
+     ylab = "Precipitation (mm)",
+     main = "Precipitation",
+     xlim = c(x_min, x_max))
