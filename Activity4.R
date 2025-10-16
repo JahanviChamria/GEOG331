@@ -60,7 +60,7 @@ for (i in 1:3) {
   short_table[nrow(short_table) + 1, ] <- list(rel_names[i], intercept, slope, r2)
 }
 
-#view the short summary table??? need more data in table?
+#view the short summary table
 print(short_table)
 
 #full output for the models:
@@ -80,7 +80,7 @@ height <- data.frame(Species = c("virginica","setosa","versicolor"),
 #join it to the iris data using tidyverse (dplyr)
 iris_with_height <- left_join(iris, height, by = "Species")
 
-#new data?? only max height or all heights??
+#new data
 head(iris_with_height)
 
 
@@ -99,7 +99,6 @@ ggplot(iris, aes(x = Sepal.Length, y = Sepal.Width)) +
 #3b. make a scatter plot with ggplot and get rid of  busy grid lines (all)
 ggplot(iris, aes(x = Sepal.Length, y = Sepal.Width)) +
   geom_point() +
-  theme_minimal()+
   theme(panel.grid = element_blank())
 
 #3c. make a scatter plot with ggplot, remove grid lines, add a title and axis labels, 
@@ -109,7 +108,7 @@ ggplot(iris, aes(x = Sepal.Length,
                  color = Species, 
                  size = Petal.Length)) +
   geom_point() +
-  theme_minimal() +
+  theme(panel.grid = element_blank()) +
   labs(title = "Iris Flower Measurements",
        x = "Sepal Length (cm)",
        y = "Sepal Width (cm)")
