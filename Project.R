@@ -55,7 +55,7 @@ cities #checking if i have the cities needed
 st_crs(cities) #checking which projection they are in
 
 #reprojecting to a metric CRS for rural buffer distances in meters
-cities_metric <- st_transform(cities_modis, 3857)  #converting to metric CRS (EPSG:3857) for buffers (in km)
+cities_metric <- st_transform(cities, 3857)  #converting to metric CRS (EPSG:3857) for buffers (in km)
 urban_poly_metric <- cities_metric$geom  #extracting city polygons (reporjected)
 
 #creating buffers for the rural areas surrounding cities
@@ -83,4 +83,57 @@ plot(rural, col = "lightgreen", border = "darkgreen", main = "Urban vs Rural Pol
 
 #urban polygons on top
 plot(urban, col = "red", border = "darkred", add = TRUE)
+
+
+#11/20/25
+#land surface temperature
+#for a recent phoenix tile for now, will be adding the two cities and time after checking if this works
+
+s <- sds("Z:\\jchamria\\project\\MOD11A2.A2025313.h08v05.061.2025322165642.hdf")
+s
+lst <- s[[1]]
+#lst <- rast("Z:\\jchamria\\project\\MOD11A2.A2025313.h08v05.061.2025322165642.hdf",
+ #           subdataset = "LST_Day_1km")
+
+#applying scale factor and then converting from Kelvin to Fahrenheit
+lst_f <- (lst * 0.02 - 273.15) * 9/5 + 32
+
+#reprojecting polygons to raster CRS
+urban_proj <- st_transform(urban, crs(lst_f))
+rural_proj <- st_transform(rural, crs(lst_f))
+
+#converting sf -> SpatVector for terra functions
+urban_v <- vect(urban_proj)
+rural_v <- vect(rural_proj)
+
+#cropping raster for each area
+lst_urban <- mask(crop(lst_f, urban_v), urban_v)
+lst_rural <- mask(crop(lst_f, rural_v), rural_v)
+
+#mean rural LST
+rural_mean <- global(lst_rural, fun="mean", na.rm=TRUE)[1,1]
+
+#UHI raster
+uhi <- lst_urban - rural_mean
+
+#ploting UHI map
+
+plot(uhi,
+     main = "Urban Heat Island Map: Phoenix, AZ",
+     xlab = "Longitude (°)",     
+     ylab = "Latitude (°)",      
+     col = terrain.colors(20),
+     zlim = c(-5, 10)  
+)
+
+#urban and rural boundaries
+plot(urban_v, border="red", lwd=2, add=TRUE)
+plot(rural_v, border="blue", lwd=2, add=TRUE)
+
+hist(uhi,
+     main = "Distribution of Urban Heat Island (Phoenix)",
+     xlab = "Temperature Difference (°F, Urban - Rural)",
+     ylab = "Number of Pixels",
+     col = "orange",
+     breaks = 20)  
 
