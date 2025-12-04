@@ -15,7 +15,7 @@ ndvi <- t[[1]]
 evi  <- t[[2]]
 
 #MODIS NDVI/EVI are scaled by 0.0001
-ndvi_scaled <- ndvi 
+ndvi_scaled <- ndvi * 0.0001
 evi_scaled  <- evi  * 0.0001
 
 #plot vegetation indices
@@ -29,7 +29,7 @@ print(crs(ndvi_scaled))
 
 point <- vect(cbind(lonPh, latPh), crs = "EPSG:4326")
 
-ndvi_val <- extract(ndvi, point)
+ndvi_val <- extract(ndvi_scaled, point)
 
 print(ndvi_val[[1]])
 
