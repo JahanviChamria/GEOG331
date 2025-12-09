@@ -2,38 +2,6 @@
 library(terra)
 library(sf)
 
-#working with only one tile for now, will replicate this process for all tiles (3 cities, different years) later
-#read the MODIS HDF file
-t <- rast("Z:\\jchamria\\project\\MOD13A2.A2024001.h08v05.061.2024022141941.hdf")
-
-#check structure
-t
-names(t)
-
-#extract useful bands
-#Band 1 = NDVI, Band 2 = EVI
-ndvi <- t[[1]]
-evi  <- t[[2]]
-
-#MODIS NDVI/EVI are scaled by 0.0001
-ndvi_scaled <- ndvi * 0.0001
-evi_scaled  <- evi  * 0.0001
-
-#plot vegetation indices
-plot(ndvi, main = "NDVI")
-plot(evi, main = "EVI")
-
-lonPh <- 112.0725 #Phoenix
-latPh <- 33.4483 
-
-print(crs(ndvi))
-
-point <- vect(cbind(lonPh, latPh), crs = "EPSG:4326")
-
-ndvi_val <- extract(ndvi_scaled, point)
-
-print(ndvi_val[[1]])
-
 #11/13/25
 #working with the GHS-UCDB data first to define my urban and rural polygons (doing this first makes more sense than NVDI and LST)
 
@@ -61,6 +29,7 @@ st_crs(cities) #checking which projection they are in
 #reprojecting to a metric CRS for rural buffer distances in meters
 cities_metric <- st_transform(cities, 3857)  #converting to metric CRS (EPSG:3857) for buffers (in km)
 urban_poly_metric <- cities_metric$geom  #extracting city polygons (reporjected)
+urban_only <- vect(urban_poly_metric)
 
 #creating buffers for the rural areas surrounding cities
 outer <- st_buffer(urban_poly_metric, 50000)   # 50 km
@@ -69,26 +38,13 @@ inner <- st_buffer(urban_poly_metric, 10000)   # 10 km
 #subtracting inner buffer from outer to get the rural ring
 rural_ring_metric <- st_difference(outer, inner)
 
-#projecting back to the latitude/longtitude 4326 CRS
-#urban <- st_transform(urban_poly_metric, 4326)
-#rural <- st_transform(rural_ring_metric, 4326)
-
-#while checking if the polygons are valid (fully closed borders, no intersections), i ran into an error for NYC
-#so i did some research to separate the polygons and fix NYC
-urban_single <- st_cast(urban, "POLYGON")
-urban_fixed <- st_make_valid(urban_single)
-st_is_valid(urban_fixed)
-st_is_valid(rural_ring_metric)
-
-urban <- urban_fixed
-
-rural_only <- mask(vect(rural_ring_metric), crop(vect(rural_ring_metric), vect(urban_poly_metric)), inverse=TRUE)
+rural_only <- mask(vect(rural_ring_metric), crop(vect(rural_ring_metric), urban_only), inverse=TRUE)
 
 #rural
 plot(rural_only, col = "lightgreen", border = "darkgreen", main = "Urban vs Rural Polygons")
 
-#urban polygons on top
-plot(urban_poly_metric, col = "red", border = "darkred", add = TRUE)
+#urban
+plot(urban_only, col = "red", border = "darkred", add = TRUE)
 
 
 #11/20/25
@@ -96,11 +52,31 @@ plot(urban_poly_metric, col = "red", border = "darkred", add = TRUE)
 #for a recent phoenix tile for now, will be adding the two cities and time after checking if this works
 
 s <- sds("Z:\\jchamria\\project\\MOD11A2.A2025313.h08v05.061.2025322165642.hdf")
-s
-lst <- s[[1]]
+sds("Z:\\jchamria\\project\\MOD11A2.A2025313.h08v05.061.2025322165642.hdf")
+#lst <- rast(s[[1]])
 #lst <- rast("Z:\\jchamria\\project\\MOD11A2.A2025313.h08v05.061.2025322165642.hdf",
- #           subdataset = "LST_Day_1km")
+#           subdataset = "LST_Day_1km")
 
+lst <- rast("HDF4_EOS:EOS_GRID:\"Z:/jchamria/project/MOD11A2.A2025313.h08v05.061.2025322165642.hdf\":MODIS_Grid_8Day_1km_LST:LST_Day_1km")
+lst
+plot(lst)
+
+minmax(lst)
+
+lst[lst < 7500] <- NA   #mask out invalid pixels
+
+vals_raw <- values(lst, mat = FALSE)
+summary(vals_raw)   
+
+vals_valid <- vals_raw[vals_raw >= 7500 & vals_raw <= 65535]
+summary(vals_valid)
+
+lst_c <- vals_valid * 0.02 - 273.15
+summary(lst_c)
+hist(lst_c, breaks=50, main="LST in Celsius (valid pixels only)", xlab="°C")
+
+#--------------------------------------
+lst <- s[[1]]
 #applying scale factor and then converting from Kelvin to Fahrenheit
 lst_f <- (lst * 0.02 - 273.15) * 9/5 + 32
 
@@ -108,47 +84,140 @@ lst_f <- (lst * 0.02 - 273.15) * 9/5 + 32
 crs(lst_f)
 
 #reprojecing to the same CRS
-lst_f_metric <- st_transform(lst_f, 3857)  #converting to metric CRS (EPSG:3857) 
+lst_f_metric <- project(lst_f, "epsg:3857")  #converting to metric CRS (EPSG:3857) 
+#-----------------------------
 
-#reprojecting polygons to raster CRS
-#urban_proj <- st_transform(urban, crs(lst_f))
-#rural_proj <- st_transform(rural, crs(lst_f))
+#crop raster to combined extent to save memory
+combined_extent <- union(ext(urban_only), ext(rural_only))
+lst_crop <- crop(lst_f_metric, combined_extent)
 
-#converting sf -> SpatVector for terra functions
-#urban_v <- vect(urban_proj)
-#rural_v <- vect(rural_proj)
+#mask urban area to get urban raster
+urban_raster <- mask(lst_crop, urban_only)
 
-#cropping raster for each area
-lst_urban <- crop(lst_f, vect(urban_poly_metric))
-lst_rural <- crop(lst_f, vect(rural_only))
+#mask rural area first with rural polygon
+rural_raster <- mask(lst_crop, rural_only)
 
-#mean urban LST
-urban_mean <- global(lst_urban, fun="mean", na.rm=TRUE)[1,1]
+#remove any overlapping urban pixels from rural raster
+rural_raster <- mask(rural_raster, urban_only, inverse=TRUE)
 
-#mean rural LST
-rural_mean <- global(lst_rural, fun="mean", na.rm=TRUE)[1,1]
+#check plots
+plot(rural_raster, main="Rural and Urban LST")
+plot(urban_raster, add=TRUE, main="Urban LST overlay")
+
+#mean LST
+urban_mean <- global(urban_raster, fun="mean", na.rm=TRUE)[1,1]
+rural_mean <- global(rural_raster, fun="mean", na.rm=TRUE)[1,1]
+
+#UHI
+uhi_value <- urban_mean - rural_mean
+cat("Urban mean:", round(urban_mean,2), "°F\n")
+cat("Rural mean:", round(rural_mean,2), "°F\n")
+cat("UHI:", round(uhi_value,2), "°F\n")
 
 #UHI raster
-uhi <- urban_mean - rural_mean
+#plot(uhi_raster,
+#     main="Urban Heat Island (Pixel-wise) Map",
+#     col=terrain.colors(20))
+#plot(urban_only, border="red", lwd=2, add=TRUE)
+#plot(rural_only, border="blue", lwd=2, add=TRUE)
 
-#ploting UHI map
+#histogram of pixel-wise UHI
+#hist(values(uhi_raster),
+#     main="Pixel-wise UHI Distribution",
+#     xlab="Temperature Difference (°F)",
+#     ylab="Number of Pixels",
+#     col="orange",
+#     breaks=20)
 
-plot(uhi,
-     main = "Urban Heat Island Map: Phoenix, AZ",
-     xlab = "Longitude (°)",     
-     ylab = "Latitude (°)",      
-     col = terrain.colors(20),
-     zlim = c(-5, 10)  
-)
 
-#urban and rural boundaries
-plot(urban_v, border="red", lwd=2, add=TRUE)
-plot(rural_v, border="blue", lwd=2, add=TRUE)
+#NDVI
 
-hist(uhi,
-     main = "Distribution of Urban Heat Island (Phoenix)",
-     xlab = "Temperature Difference (°F, Urban - Rural)",
-     ylab = "Number of Pixels",
-     col = "orange",
-     breaks = 20)  
+#working with only one tile for now, will replicate this process for all tiles (3 cities, different years) later
+#read the MODIS HDF file
+t <- rast("Z:\\jchamria\\project\\MOD13A2.A2024001.h08v05.061.2024022141941.hdf")
 
+#check structure
+t
+names(t)
+
+#extract useful bands
+#Band 1 = NDVI
+ndvi_raw <- t[[1]]
+
+ndvi_raw_metric <- project(ndvi_raw, "EPSG:3857")
+
+ndvi_raw_crop <- crop(ndvi_raw_metric, combined_extent)
+
+#mask with urban/rural polygons
+urban_ndvi_raw  <- mask(ndvi_raw_crop, urban_only)
+rural_ndvi_raw  <- mask(ndvi_raw_crop, rural_only)
+rural_ndvi_raw  <- mask(rural_ndvi_raw, urban_only, inverse=TRUE)
+
+#apply scaling (MODIS so multiply by 0.0001)
+urban_ndvi  <- urban_ndvi_raw * 0.0001
+rural_ndvi  <- rural_ndvi_raw * 0.0001
+
+#means
+urban_ndvi_mean <- global(urban_ndvi, fun="mean", na.rm=TRUE)[1,1]
+rural_ndvi_mean <- global(rural_ndvi, fun="mean", na.rm=TRUE)[1,1]
+
+cat("Urban NDVI mean:", urban_ndvi_mean, "\n")
+cat("Rural NDVI mean:", rural_ndvi_mean, "\n")
+cat("NDVI difference:", rural_ndvi_mean - urban_ndvi_mean, "\n")
+
+plot(urban_ndvi, main="Rural and Urban NDVI", col=terrain.colors(20))
+plot(rural_ndvi, main="Rural NDVI", add=TRUE, col=terrain.colors(20))
+
+hist(values(urban_ndvi),
+     main="Urban NDVI Distribution",
+     col="darkgreen", breaks=30)
+
+hist(values(rural_ndvi),
+     main="Rural NDVI Distribution",
+     col="lightgreen", breaks=30)
+
+
+#built-up density
+
+built <- rast("Z:\\jchamria\\project\\GHS_BUILT_S_NRES_E2025_GLOBE_R2023A_4326_30ss_V1_0\\GHS_BUILT_S_NRES_E2025_GLOBE_R2023A_4326_30ss_V1_0.tif")
+built_valid <- built
+values(built_valid)[values(built_valid) < -2000 | values(built_valid) > 10000] <- NA
+
+built_frac <- built / 10000
+built_3857 <- project(built_frac, "EPSG:3857")
+built_crop <- crop(built_3857, combined_extent)
+minmax(built)
+
+urban_built  <- mask(built_crop, urban_only)
+rural_built  <- mask(built_crop, rural_only)
+
+#remove overlap pixels from rural
+rural_built  <- mask(rural_built, urban_only, inverse = TRUE)
+
+urban_built_mean <- global(urban_built, "mean", na.rm = TRUE)[1,1]
+rural_built_mean <- global(rural_built, "mean", na.rm = TRUE)[1,1]
+
+cat("Urban built-up (%):", round(urban_built_mean * 100, 2), "\n")
+cat("Rural built-up (%):", round(rural_built_mean * 100, 2), "\n")
+cat("Difference:", 
+    round(urban_built_mean * 100 - rural_built_mean * 100, 2), "%\n")
+
+zlim_vals <- c(0, 100)  
+
+#rural raster (with legend)
+plot(rural_built,
+     col = terrain.colors(30),
+     zlim = zlim_vals,
+     main = "Urban (overlay) and Rural Built-Up Density",
+     xlab = "Easting (m)",
+     ylab = "Northing (m)")
+
+#overlay urban raster (without legend)
+plot(urban_built,
+     col = heat.colors(30, alpha = 0.5),  
+     add = TRUE,
+     zlim = zlim_vals,
+     legend = FALSE)
+
+
+#compiling
