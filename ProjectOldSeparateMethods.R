@@ -62,22 +62,22 @@ plot(lst)
 
 #minmax(lst)
 
-lst[lst < 7500] <- NA   #mask out invalid pixels
+#lst[lst < 7500] <- NA   #mask out invalid pixels
 
 vals_raw <- values(lst, mat = FALSE)
 summary(vals_raw)   
 
-vals_valid <- vals_raw[vals_raw >= 7500 & vals_raw <= 65535]
+#vals_valid <- vals_raw[vals_raw >= 7500 & vals_raw <= 65535]
 summary(vals_valid)
 
-lst_c <- vals_valid * 0.02 - 273.15
+lst_c <- vals_raw - 273.15
 summary(lst_c)
 hist(lst_c, breaks=50, main="LST in Celsius (valid pixels only)", xlab="°C")
 
 #--------------------------------------
 lst <- s[[1]]
 #applying scale factor and then converting from Kelvin to Fahrenheit
-lst_f <- (lst * 0.02 - 273.15) * 9/5 + 32
+lst_f <- (lst - 273.15) * 9/5 + 32
 
 #checking projection of landsat data
 crs(lst_f)
@@ -139,14 +139,22 @@ t <- rast("Z:\\jchamria\\project\\MOD13A2.A2024001.h08v05.061.2024022141941.hdf"
 t
 names(t)
 
+s <- sds(t)
+print(t)
+terra::describe(t)
+
 #extract useful bands
 #Band 1 = NDVI
 ndvi_raw <- t[[1]]
 
 ndvi_raw_metric <- project(ndvi_raw, "EPSG:3857")
 
-ndvi_raw_crop <- crop(ndvi_raw_metric, combined_extent)
+all_proj <- c(urban_only, rural_only) 
+combined_extent <- ext(all_proj)
 
+ndvi_raw_crop <- crop(ndvi_raw_metric, combined_extent)
+class(combined_extent)
+print(combined_extent)
 #mask with urban/rural polygons
 urban_ndvi_raw  <- mask(ndvi_raw_crop, urban_only)
 rural_ndvi_raw  <- mask(ndvi_raw_crop, rural_only)
