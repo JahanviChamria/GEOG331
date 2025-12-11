@@ -57,7 +57,6 @@ sds("Z:\\jchamria\\project\\MOD11A2.A2025313.h08v05.061.2025322165642.hdf")
 #           subdataset = "LST_Day_1km")
 
 lst <- rast("HDF4_EOS:EOS_GRID:\"Z:/jchamria/project/MOD11A2.A2025313.h08v05.061.2025322165642.hdf\":MODIS_Grid_8Day_1km_LST:LST_Day_1km")
-lst
 plot(lst)
 
 #minmax(lst)
@@ -68,26 +67,33 @@ vals_raw <- values(lst, mat = FALSE)
 summary(vals_raw)   
 
 #vals_valid <- vals_raw[vals_raw >= 7500 & vals_raw <= 65535]
-summary(vals_valid)
+#summary(vals_valid)
 
-lst_c <- vals_raw - 273.15
-summary(lst_c)
-hist(lst_c, breaks=50, main="LST in Celsius (valid pixels only)", xlab="°C")
+#lst_c <- vals_raw - 273.15
+#summary(lst_c)
+#hist(lst_c, breaks=50, main="LST in Celsius (valid pixels only)", xlab="°C")
 
 #--------------------------------------
 lst <- s[[1]]
 #applying scale factor and then converting from Kelvin to Fahrenheit
-lst_f <- (lst - 273.15) * 9/5 + 32
+lst_f <- (((lst-273.15) * 9/5) + 32)
+hist(lst_f, breaks=50, main="LST in Fahrenheit", xlab="°F")
 
 #checking projection of landsat data
 crs(lst_f)
 
+summary(lst_f)
 #reprojecing to the same CRS
 lst_f_metric <- project(lst_f, "epsg:3857")  #converting to metric CRS (EPSG:3857) 
 #-----------------------------
+summary(values(lst_f_metric))
+
 
 #crop raster to combined extent to save memory
-combined_extent <- union(ext(urban_only), ext(rural_only))
+all_polygons <- c(urban_only, rural_only)
+
+combined_extent <- ext(all_polygons)
+
 lst_crop <- crop(lst_f_metric, combined_extent)
 
 #mask urban area to get urban raster
@@ -101,7 +107,7 @@ rural_raster <- mask(rural_raster, urban_only, inverse=TRUE)
 
 #check plots
 plot(rural_raster, main="Rural and Urban LST")
-plot(urban_raster, add=TRUE, main="Urban LST overlay")
+plot(urban_raster, add=TRUE, main="Urban LST")
 
 #mean LST
 urban_mean <- global(urban_raster, fun="mean", na.rm=TRUE)[1,1]
@@ -128,6 +134,59 @@ cat("UHI:", round(uhi_value,2), "°F\n")
 #     col="orange",
 #     breaks=20)
 
+# --------------------------------------------------------------
+# HISTOGRAM OF PIXEL-WISE UHI VALUES
+# --------------------------------------------------------------
+
+# -------------------------
+# Histogram of pixel-wise UHI (urban pixel - rural mean)
+# Make axes explicit so they are 'complete'
+# -------------------------
+urban_vals <- values(urban_raster)
+urban_vals <- urban_vals[is.finite(urban_vals)]
+
+uhi_pixelwise <- urban_vals - rural_mean
+uhi_pixelwise <- uhi_pixelwise[is.finite(uhi_pixelwise)]
+
+# Define nice breakpoints and axis limits
+xlims_hist <- range(uhi_pixelwise, na.rm = TRUE)
+xpad <- diff(xlims_hist) * 0.04
+xlims_hist <- c(xlims_hist[1] - xpad, xlims_hist[2] + xpad)
+
+# Choose breaks (40 bins or fewer if very narrow range)
+nbins <- 40
+breaks_vec <- pretty(xlims_hist, n = nbins)
+
+# Make histogram without axes, then add complete axes
+hist_obj <- hist(uhi_pixelwise,
+                 breaks = breaks_vec,
+                 plot = FALSE)
+
+# Set up plotting margins if needed
+op <- par(no.readonly = TRUE)
+par(mar = c(5, 5, 4, 2) + 0.1)  # more space for axis labels
+
+# draw histogram with explicit xlim/ylim and no axes
+hist(uhi_pixelwise,
+     breaks = breaks_vec,
+     col = "orange",
+     main = "Histogram of UHI Values (Pixel-wise): Phoenix in 2025",
+     xlab = "UHI (°F): Urban pixels - Rural mean",
+     ylab = "Number of Pixels",
+     xlim = xlims_hist,
+     ylim = c(0, max(hist_obj$counts, na.rm = TRUE) * 1.05),
+     axes = FALSE)
+
+# add x and y axes with pretty ticks
+axis(1, at = pretty(xlims_hist))
+axis(2, at = pretty(c(0, hist_obj$counts)), las = 1)
+
+# add a vertical line at mean UHI and label
+abline(v = mean(uhi_pixelwise, na.rm = TRUE), col = "red", lwd = 2, lty = 2)
+mtext(sprintf("Mean = %.2f °F", mean(uhi_pixelwise, na.rm = TRUE)), side = 3, line = -1, adj = 0.99, col = "red")
+
+# restore par
+par(op)
 
 #NDVI
 

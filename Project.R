@@ -5,6 +5,14 @@ library(dplyr)
 library(ggplot2)
 #install.packages("tidyr")
 library(tidyr)
+#install.packages("purrr")
+library(purrr)
+#install.packages("patchwork")
+library(patchwork)
+#install.packages("broom")
+library(broom)
+#install.packages("corrplot")
+library(corrplot)
 
 opar <- par(no.readonly = TRUE)
 
@@ -596,3 +604,383 @@ for (city in target_cities) {
 ndvi_means <- do.call(rbind, ndvi_means_list)
 ndvi_means
 
+#LST processing
+
+lst_paths <- list(
+  "Chicago"       = "Z:/jchamria/project/earthdata/LST/Chicago",
+  "Phoenix"       = "Z:/jchamria/project/earthdata/LST/Phoenix",
+  "New York City" = "Z:/jchamria/project/earthdata/LST/New York City"
+)
+
+#MODIS Sinusoidal CRS 
+modis_sinu_crs <- "+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs"
+
+lst_means_list <- list()
+
+for (city in target_cities) {
+  
+  cat("\n", toupper(city), "\n")
+  
+  files <- list.files(lst_paths[[city]], pattern = "\\.hdf$", full.names = TRUE)
+  if (length(files) == 0) {
+    cat("No files found.\n")
+    next
+  }
+  
+  #extract year from MODIS filenames
+  years <- as.numeric(sub(".*A(\\d{4})(\\d{3}).*", "\\1", basename(files)))
+  unique_years <- sort(unique(years))
+  
+  for (yr in unique_years) {
+    
+    cat("\nYear:", yr, "\n")
+    
+    yearly_files <- files[years == yr]
+    if (length(yearly_files) == 0) {
+      cat("  No files for this year.\n")
+      next
+    }
+    
+    lst_stack <- list()
+    
+    #get combined extent once for each city/year
+    all_polygons_3857 <- c(urban_list[[city]], rural_list[[city]])
+    combined_extent_3857 <- ext(all_polygons_3857)
+    
+    #process each LST file
+    for (f in yearly_files) {
+      cat("  File:", basename(f), "\n")
+      
+      lst_raw <- try(rast(f, subds = 1), silent = TRUE)
+      
+      if (inherits(lst_raw, "try-error")) {
+        cat("    Could not read LST_Day_1km subdataset.\n")
+        next
+      }
+      
+      #assign Sinusoidal CRS 
+      crs(lst_raw) <- modis_sinu_crs
+      
+      #convert Kelvin to Fahrenheit
+      lst_f <- ((lst_raw - 273.15) * 9/5) + 32
+      
+      #reproject entire tile to EPSG:3857
+      lst_3857 <- try(project(lst_f, "EPSG:3857"), silent = TRUE)
+      
+      if (inherits(lst_3857, "try-error")) {
+        cat("    Projection failed.\n")
+        next
+      }
+      
+      if (all(is.nan(values(lst_3857)))) {
+        cat("    Tile does not intersect analysis area.\n")
+        next
+      }
+      
+      #crop to city polygon extent
+      lst_crop <- crop(lst_3857, combined_extent_3857)
+      
+      lst_stack[[length(lst_stack) + 1]] <- lst_crop
+    }
+    
+    #if no valid files
+    if (length(lst_stack) == 0) {
+      cat("  No usable LST rasters for this year.\n")
+      next
+    }
+    
+    #compute yearly mean LST
+    lst_mean_year <- mean(rast(lst_stack))
+    
+    #mask urban & rural
+    urban_lst <- mask(lst_mean_year, urban_list[[city]])
+    rural_lst <- mask(lst_mean_year, rural_list[[city]])
+    rural_lst <- mask(rural_lst, urban_list[[city]], inverse = TRUE)  # remove overlaps
+    
+    #summary stats
+    urban_mean <- global(urban_lst, "mean", na.rm = TRUE)[1,1]
+    rural_mean <- global(rural_lst, "mean", na.rm = TRUE)[1,1]
+    uhi <- urban_mean - rural_mean
+    
+    cat("  Urban LST (°F):", round(urban_mean, 2), "\n")
+    cat("  Rural LST (°F):", round(rural_mean, 2), "\n")
+    cat("  UHI (°F):", round(uhi, 2), "\n")
+    
+    lst_means_list[[length(lst_means_list) + 1]] <- data.frame(
+      city = city,
+      year = yr,
+      urban_lst_f = urban_mean,
+      rural_lst_f = rural_mean,
+      uhi_f = uhi
+    )
+  }
+}
+
+#final output dataframe
+lst_means <- do.call(rbind, lst_means_list)
+lst_means
+
+
+#ANALYSIS
+
+
+lst_df <- lst_means %>%
+  rename(
+    lst_urban = urban_lst_f,
+    lst_rural = rural_lst_f,
+    uhi = uhi_f
+  )
+
+ndvi_df <- ndvi_means %>%
+  rename(
+    ndvi_urban = urban_ndvi,
+    ndvi_rural = rural_ndvi,
+    ndvi_diff = diff
+  )
+
+built_df <- built_full %>%
+  rename(
+    built_urban = urban_built,
+    built_rural = rural_built,
+    built_diff_percentage = diff
+  )
+
+#join
+
+master_df <- lst_df %>%
+  full_join(ndvi_df, by = c("city", "year")) %>%
+  full_join(built_df, by = c("city", "year")) %>%
+  arrange(city, year)
+
+print(master_df)
+
+master_df_filtered <- master_df %>%
+  filter(!(city == "Chicago" & year == 2001))
+
+print(master_df_filtered)
+
+#PLOTS
+
+limits_df <- master_df %>%
+  group_by(city) %>%
+  summarise(
+    ndvi_min = min(ndvi_urban, na.rm = TRUE),
+    ndvi_max = max(ndvi_urban, na.rm = TRUE),
+    lst_min  = min(lst_urban, na.rm = TRUE),
+    lst_max  = max(lst_urban, na.rm = TRUE),
+    built_min = min(built_urban, na.rm = TRUE),
+    built_max = max(built_urban, na.rm = TRUE),
+    uhi_min = min(uhi, na.rm = TRUE),
+    uhi_max = max(uhi, na.rm = TRUE)
+  ) %>%
+  mutate(
+    ndvi_min = ndvi_min - 0.05*(ndvi_max-ndvi_min),
+    ndvi_max = ndvi_max + 0.05*(ndvi_max-ndvi_min),
+    lst_min  = lst_min - 0.05*(lst_max-lst_min),
+    lst_max  = lst_max + 0.05*(lst_max-lst_min),
+    built_min = built_min - 0.05*(built_max-built_min),
+    built_max = built_max + 0.05*(built_max-built_min),
+    uhi_min = uhi_min - 0.05*(uhi_max-uhi_min),
+    uhi_max = uhi_max + 0.05*(uhi_max-uhi_max)
+  )
+
+# A) UHI over time
+ggplot(master_df_filtered, aes(x = year, y = uhi, color = city)) +
+  geom_line(linewidth = 1.1) + 
+  geom_point() +
+  theme_minimal() +
+  labs(
+    title = "Urban Heat Island (UHI) Trends, 2000–2025",
+    y = "UHI Intensity (°F)",
+    x = "Year"
+  )
+
+#B) NDVI over time (urban vs rural)
+ndvi_long <- master_df %>%
+  select(city, year, ndvi_urban, ndvi_rural) %>%
+  pivot_longer(cols = c(ndvi_urban, ndvi_rural),
+               names_to = "zone", values_to = "ndvi")
+
+ggplot(ndvi_long, aes(year, ndvi, color = zone)) +
+  geom_line(size = 1.1) +
+  facet_wrap(~city) +
+  theme_minimal() +
+  labs(
+    title = "Urban vs Rural NDVI, 2000–2025",
+    y = "NDVI"
+  )+
+theme(
+  panel.border = element_rect(colour = "gray50", fill = NA, linewidth = 0.5),
+  plot.background = element_rect(colour = "black", fill = "white", linewidth = 0.8),
+  strip.background = element_rect(fill = "gray90", colour = "gray50", linewidth = 0.5)
+)
+
+
+#C) Built-up density over time
+built_long <- master_df %>%
+  select(city, year, built_urban, built_rural) %>%
+  pivot_longer(cols = c(built_urban, built_rural),
+               names_to = "zone", values_to = "built")
+
+ggplot(built_long, aes(year, built, color = zone)) +
+  geom_line(size = 1.1) +
+  facet_wrap(~city) +
+  theme_minimal() +
+  labs(
+    title = "Built-Up Density (Non-Residential) Over Time",
+    y = "Built-Up Density (0-1)"
+  )+
+  theme(
+    panel.border = element_rect(colour = "gray50", fill = NA, linewidth = 0.5),
+    plot.background = element_rect(colour = "black", fill = "white", linewidth = 0.8),
+    strip.background = element_rect(fill = "gray90", colour = "gray50", linewidth = 0.5)
+  )
+
+#D) Urban LST vs NDVI
+ggplot(master_df %>% filter(city == "Phoenix"), 
+       aes(ndvi_urban, lst_urban)) +
+  geom_point(color = "#E76F51") +
+  geom_smooth(method = "lm", se = FALSE, color = "#E76F51") +
+  theme_minimal() +
+  labs(
+    title = "Urban LST vs Urban NDVI: Phoenix",
+    x = "Urban NDVI",
+    y = "Urban LST (°F)"
+  )
+
+ggplot(master_df %>% filter(city == "Chicago"), 
+       aes(ndvi_urban, lst_urban)) +
+  geom_point(color = "#457B9D") +
+  geom_smooth(method = "lm", se = FALSE, color = "#457B9D") +
+  theme_minimal() +
+  labs(
+    title = "Urban LST vs Urban NDVI: Chicago",
+    x = "Urban NDVI",
+    y = "Urban LST (°F)"
+  )
+
+
+ggplot(master_df %>% filter(city == "New York City"), 
+       aes(ndvi_urban, lst_urban)) +
+  geom_point(color = "#2A9D1F") +
+  geom_smooth(method = "lm", se = FALSE, color = "#2A9D1F") +
+  theme_minimal() +
+  labs(
+    title = "Urban LST vs Urban NDVI: New York City",
+    x = "Urban NDVI",
+    y = "Urban LST (°F)"
+  )
+
+
+
+#_______________
+
+#combinations
+plot_combinations <- list(
+  list(x="ndvi_urban", y="lst_urban", xlab="Urban NDVI", ylab="Urban LST (°F)", title="LST vs NDVI"),
+  list(x="built_urban", y="lst_urban", xlab="Built-up Density (%)", ylab="Urban LST (°F)", title="LST vs Built-up"),
+  list(x="ndvi_urban", y="uhi", xlab="Urban NDVI", ylab="UHI (°F)", title="UHI vs NDVI"),
+  list(x="built_urban", y="uhi", xlab="Built-up Density (%)", ylab="UHI (°F)", title="UHI vs Built-up")
+)
+
+#to get axis limits automatically
+get_limits <- function(df, xvar, yvar){
+  xlims <- range(df[[xvar]], na.rm = TRUE)
+  ylims <- range(df[[yvar]], na.rm = TRUE)
+  list(xlims=xlims, ylims=ylims)
+}
+
+#ggplot 
+make_plot <- function(df, xvar, yvar, xlab, ylab, title, color_val, show_legend=FALSE){
+  lm_model <- lm(as.formula(paste(yvar,"~",xvar)), data=df)
+  limits <- get_limits(df, xvar, yvar)
+  
+  p <- ggplot(df, aes_string(x=xvar, y=yvar)) +
+    geom_point(color=color_val, size=2) +
+    geom_smooth(method="lm", se=FALSE, color=color_val) +
+    theme_minimal() +
+    theme(legend.position = ifelse(show_legend, "right", "none")) +
+    labs(title=paste0(title),
+         x=xlab, y=ylab) +
+    xlim(limits$xlims) +
+    ylim(limits$ylims)
+  return(p)
+}
+
+# city-wise plots
+city_colors <- c("#E76F51", "#457B9D","#2A9D1F", "orange")
+city_list <- unique(master_df$city)
+city_plots <- list()
+
+for(city_name in city_list){
+  df <- master_df %>% filter(city == city_name)
+  plots <- list()
+  for(i in seq_along(plot_combinations)){
+    combo <- plot_combinations[[i]]
+    plots[[i]] <- make_plot(df, combo$x, combo$y, combo$xlab, combo$ylab, combo$title,
+                            color_val=city_colors[i], show_legend=FALSE)
+  }
+  city_plots[[city_name]] <- wrap_plots(plots, ncol=2, nrow=2) + plot_annotation(title=city_name)
+}
+
+city_plots[["Phoenix"]]
+city_plots[["Chicago"]]
+city_plots[["New York City"]]
+
+# each city separate
+city_colors2 <- c("#E76F51", "#457B9D","#2A9D1F")
+plot_all_cities <- list()
+
+for(i in seq_along(city_list)){
+  city_name <- city_list[i]
+  df <- master_df %>% filter(city == city_name)
+  plots <- list()
+  for(j in seq_along(plot_combinations)){
+    combo <- plot_combinations[[j]]
+    plots[[j]] <- make_plot(df, combo$x, combo$y, combo$xlab, combo$ylab, combo$title,
+                            color_val=city_colors2[i], show_legend=FALSE)
+  }
+}
+
+plots_comb1 <- lapply(seq_along(city_list), function(i){
+  df <- master_df %>% filter(city == city_list[i])
+  combo <- plot_combinations[[4]] #i can change the index as needed
+  
+  make_plot(df, combo$x, combo$y, combo$xlab, combo$ylab, city_list[i],
+            color_val=city_colors2[i], show_legend=TRUE)
+})
+
+wrap_plots(plots_comb1, ncol=3)
+
+
+all_plots <- map(plot_combinations, function(combo){
+  map(unique(master_df$city), ~plot_city(.x, combo$x, combo$y, combo$xlab, combo$ylab, combo$title))
+})
+
+final_plot <- (all_plots[[1]][[1]] | all_plots[[1]][[2]] | all_plots[[1]][[3]]) /
+  (all_plots[[2]][[1]] | all_plots[[2]][[2]] | all_plots[[2]][[3]]) /
+  (all_plots[[3]][[1]] | all_plots[[3]][[2]] | all_plots[[3]][[3]]) /
+  (all_plots[[4]][[1]] | all_plots[[4]][[2]] | all_plots[[4]][[3]])
+
+final_plot
+
+#correlation matrix
+
+
+corr_df <- master_df %>% 
+  select(lst_urban, ndvi_urban, built_urban, lst_rural, uhi)
+
+corrplot(cor(corr_df, use = "complete.obs"), method = "color")
+
+#regression model
+model <- lm(lst_urban ~ ndvi_urban + built_urban + lst_rural, data = master_df)
+summary(model)
+
+#is uhi increasing
+summary(lm(uhi ~ year + city, data = master_df))
+
+#do cities differ in uhi
+anova(lm(uhi ~ city, data = master_df))
+
+#urban vs rural ndvi
+t.test(master_df$ndvi_urban, master_df$ndvi_rural, paired = TRUE)
