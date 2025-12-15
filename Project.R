@@ -3,18 +3,12 @@ library(terra)
 library(sf)
 library(dplyr)
 library(ggplot2)
-#install.packages("tidyr")
 library(tidyr)
-#install.packages("purrr")
 library(purrr)
-#install.packages("patchwork")
 library(patchwork)
-#install.packages("broom")
-library(broom)
-#install.packages("corrplot")
 library(corrplot)
 
-opar <- par(no.readonly = TRUE)
+opar <- par(no.readonly = TRUE) 
 
 #11/13/25
 #working with the GHS-UCDB data first to define my urban and rural polygons (doing this first makes more sense than NVDI and LST)
@@ -67,30 +61,20 @@ plot(urban_only, col = "red", border = "darkred", add = TRUE)
 
 s <- sds("Z:\\jchamria\\project\\MOD11A2.A2025313.h08v05.061.2025322165642.hdf")
 sds("Z:\\jchamria\\project\\MOD11A2.A2025313.h08v05.061.2025322165642.hdf")
-#lst <- rast(s[[1]])
-#lst <- rast("Z:\\jchamria\\project\\MOD11A2.A2025313.h08v05.061.2025322165642.hdf",
-#           subdataset = "LST_Day_1km")
 
 lst <- rast("HDF4_EOS:EOS_GRID:\"Z:/jchamria/project/MOD11A2.A2025313.h08v05.061.2025322165642.hdf\":MODIS_Grid_8Day_1km_LST:LST_Day_1km")
 lst
 plot(lst)
 
-#minmax(lst)
-
-#lst[lst < 7500] <- NA   #mask out invalid pixels
-
 vals_raw <- values(lst, mat = FALSE)
 summary(vals_raw)   
-
-#vals_valid <- vals_raw[vals_raw >= 7500 & vals_raw <= 65535]
-#summary(vals_valid)
 
 lst_c <- vals_raw - 273.15
 summary(lst_c)
 hist(lst_c, breaks=50, main="LST in Celsius (valid pixels only)", xlab="°C")
 
-#--------------------------------------
 lst <- s[[1]]
+
 #applying scale factor and then converting from Kelvin to Fahrenheit
 lst_f <- (lst - 273.15) * 9/5 + 32
 
@@ -99,13 +83,8 @@ crs(lst_f)
 
 #reprojecing to the same CRS
 lst_f_metric <- project(lst_f, "epsg:3857")  #converting to metric CRS (EPSG:3857) 
-#-----------------------------
 
-#crop raster to combined extent
-#combined_extent <- union(ext(urban_only), ext(rural_only))
-#summary(combined_extent)
-
-#combine the urban and rural polygons into a single SpatVector
+#combine the urban and rural polygons
 all_polygons <- c(urban_only, rural_only)
 
 combined_extent <- ext(all_polygons)
@@ -135,22 +114,6 @@ cat("Urban mean:", round(urban_mean,2), "°F\n")
 cat("Rural mean:", round(rural_mean,2), "°F\n")
 cat("UHI:", round(uhi_value,2), "°F\n")
 
-#UHI raster
-#plot(uhi_raster,
-#     main="Urban Heat Island (Pixel-wise) Map",
-#     col=terrain.colors(20))
-#plot(urban_only, border="red", lwd=2, add=TRUE)
-#plot(rural_only, border="blue", lwd=2, add=TRUE)
-
-#histogram of pixel-wise UHI
-#hist(values(uhi_raster),
-#     main="Pixel-wise UHI Distribution",
-#     xlab="Temperature Difference (°F)",
-#     ylab="Number of Pixels",
-#     col="orange",
-#     breaks=20)
-
-
 #NDVI
 
 #working with only one tile for now, will replicate this process for all tiles (3 cities, different years) later
@@ -162,7 +125,7 @@ t
 names(t)
 
 #extract useful bands
-#Band 1 = NDVI
+#band 1 = NDVI
 ndvi_raw <- t[[1]]
 
 ndvi_raw_metric <- project(ndvi_raw, "EPSG:3857")
@@ -205,8 +168,6 @@ hist(values(rural_ndvi),
 #built-up density
 
 built <- rast("Z:\\jchamria\\project\\GHS_BUILT_S_NRES_E2025_GLOBE_R2023A_4326_30ss_V1_0\\GHS_BUILT_S_NRES_E2025_GLOBE_R2023A_4326_30ss_V1_0.tif")
-#built_valid <- built
-#values(built_valid)[values(built_valid) < -2000 | values(built_valid) > 10000] <- NA
 
 all_polygons <- c(urban_only, rural_only)
 
@@ -215,7 +176,6 @@ combined_extent <- ext(all_polygons)
 built_frac <- built / 10000
 built_3857 <- project(built_frac, "EPSG:3857")
 built_crop <- crop(built_3857, combined_extent)
-minmax(built)
 
 urban_built  <- mask(built_crop, urban_only)
 rural_built  <- mask(built_crop, rural_only)
@@ -249,7 +209,7 @@ plot(urban_built,
      legend = FALSE)
 
 #compiling
-target_cities <- c("Phoenix", "Chicago", "New York City") #the cities i wish to analyze
+target_cities <- c("Phoenix", "Chicago", "New York City") #the cities I wish to analyze
 years_lst <- 2000:2025              
 years_ndvi <- 2000:2025             
 years_built <- c(2000,2005,2010,2015,2020,2025)  #global built-up raster epochs available
@@ -259,7 +219,7 @@ ucdb_poly <- st_read("Z:/jchamria/project/GHS_UCDB_REGION_NORTHERN_AMERICA_R2024
                      layer = "GHSL_UCDB_THEME_GENERAL_CHARACTERISTICS_GLOBE_R2024A")
 
 cities_sf <- ucdb_poly[ucdb_poly$GC_UCN_MAI_2025 %in% target_cities, ]
-cities_metric <- st_transform(cities_sf, 3857)  # metric CRS
+cities_metric <- st_transform(cities_sf, 3857) 
 
 urban_list <- lapply(1:nrow(cities_metric), function(i) vect(cities_metric$geom[i]))
 names(urban_list) <- target_cities
@@ -299,87 +259,6 @@ for(i in names(rural_list)){
 #polygons have been obtained
 #moving on to built-up density
 
-#load all global GHSL built-up files
-#built_means_list <- list()
-
-#folder with global built-up TIFs
-#built_files <- list.files("Z:/jchamria/project/builtupdata/",
-#                          pattern = "\\.tif$", full.names = TRUE)
-
-#for (f in built_files) {
-  
-  #extract year from filename
-#  year <- as.numeric(sub(".*E(\\d{4}).*", "\\1", basename(f)))
-#  cat("Processing year:", year, "\n")  #needed because of long processing times and for debugging
-  
-  #safe read (no bad_alloc which i was getting earlier because of large files)
-#  built_global <- try(rast(f), silent = TRUE)
-#  if (inherits(built_global, "try-error")) {
-#    cat("Failed to read raster:", f, "\n")
-#    next
-#  }
-  
-  #remove invalid pixels
-#  built_valid <- classify(
-#    built_global,
-#    rcl = matrix(c(-Inf, -2000, NA,
-#                   10000, Inf, NA), ncol = 3, byrow = TRUE)
-#  )
-  
-  #convert to 0–1 scale
-#  built_frac <- built_valid / 10000
-  
-# crs(built_frac) <- "EPSG:4326"
-  
-# for (city in target_cities) {
-#   cat("  City:", city, "\n")
-    
-    #use the combined extent of urban+rural in native CRS of raster
-    #transform urban/rural polygons to built CRS
-#   urban_proj <- project(urban_list[[city]], crs(built_frac))
-#   rural_proj <- project(rural_list[[city]], crs(built_frac))
-    
-    #combine the projected urban and rural vectors
-#   all_proj <- c(urban_proj, rural_proj) 
-    #get the extent of the combined vector
-#   combined_extent <- ext(all_proj)
-    
-    #crop first in native CRS
-#    built_crop <- crop(built_frac, combined_extent)
-    
-    #reproject cropped raster to metric CRS 3857
-#    built_3857 <- project(built_crop, "EPSG:3857")
-    
-    #mask urban/rural areas (already in 3857)
-#    urban_built  <- mask(built_3857, urban_list[[city]])
-#    rural_built  <- mask(built_3857, rural_list[[city]])
-#    rural_built  <- mask(rural_built, urban_list[[city]], inverse = TRUE)
-    
-    #compute means
-#    urban_mean <- global(urban_built, "mean", na.rm = TRUE)[1,1]
-#    rural_mean <- global(rural_built, "mean", na.rm = TRUE)[1,1]
-#    diff_pct <- (urban_mean - rural_mean) * 100
-    
-    #store
-#    built_means_list[[length(built_means_list)+1]] <- data.frame(
-#      city = city,
-#      year = year,
-#      urban_built = urban_mean,
-#      rural_built = rural_mean,
-#      diff = diff_pct
-#    )
-    
-    #print
-#    cat("    Urban built-up:", round(urban_mean*100,2), "%\n")
-#    cat("    Rural built-up:", round(rural_mean*100,2), "%\n")
-#    cat("    Difference (urban-rural):", round(diff_pct,2), "%\n\n")
-#  }
-#}
-
-#combine into one data frame
-#built_means <- do.call(rbind, built_means_list)
-#built_means
-
 built_dir <- "Z:/jchamria/project/builtupdata/"
 
 #non-residential built-up 
@@ -404,7 +283,6 @@ built_file_sets <- list(
 
 built_means_list <- list()
 
-
 for (type in names(built_file_sets)) {
   
   cat("\nProcessing:", type, "built-up density\n")
@@ -415,7 +293,7 @@ for (type in names(built_file_sets)) {
     year <- as.numeric(sub(".*E(\\d{4}).*", "\\1", basename(f)))
     cat("Processing year:", year, "\n")
     
-    #safe raster read (no bad_alloc which i was getting earlier because of large files)
+    #safe raster read (no bad_alloc which I was getting earlier because of large files)
     built_global <- try(rast(f), silent = TRUE)
     if (inherits(built_global, "try-error")) {
       cat("  Failed to read raster:", f, "\n")
@@ -468,7 +346,7 @@ for (type in names(built_file_sets)) {
       built_means_list[[length(built_means_list) + 1]] <- data.frame(
         city       = city,
         year       = year,
-        type       = type,   # residential / non_residential
+        type       = type,   # residential/non_residential
         urban_built = urban_mean,
         rural_built = rural_mean,
         diff        = diff_pct
@@ -497,13 +375,12 @@ city_colors <- c(
   "New York City" = "green"
 )
 
-
 plot(NULL,
      xlim = c(2000, 2025),
      ylim = c(0, 0.5),
      xlab = "Year",
      ylab = "Built-Up Fraction",
-     main = "RESIDENTIAL Built-Up Density"
+     main = "Total Built-Up Density"
 )
 
 for (city in target_cities) {
@@ -535,7 +412,7 @@ plot(NULL,
      ylim = c(0, 0.5),
      xlab = "Year",
      ylab = "Built-Up Fraction",
-     main = "NON-RESIDENTIAL Built-Up Density"
+     main = "Non-residential Built-Up Density"
 )
 
 for (city in target_cities) {
@@ -620,7 +497,7 @@ ggplot(built_long %>% filter(built_type == "residential"),
   geom_line(size = 1) +
   geom_point(size = 2) +
   facet_wrap(~ city, ncol = 1) +
-  labs(title = "Residential Built-Up Density (2000–2025)",
+  labs(title = "Total (Residential & Non-Residential) Built-Up Density (2000–2025)",
        x = "Year", y = "Built-Up Density (%)") +
   theme_minimal(base_size = 14) +
   scale_color_manual(values = c("urban_built" = "red",
@@ -637,8 +514,7 @@ ggplot(built_long %>% filter(built_type == "non_residential"),
   scale_color_manual(values = c("urban_built" = "red",
                                 "rural_built" = "green"))
 
-
-# ensure legend labels match scale
+#ensure legend labels match scale
 built_long <- built_long %>%
   mutate(
     built_type_clean = ifelse(built_type == "non_residential", "Non-Residential", "Residential"),
@@ -646,7 +522,7 @@ built_long <- built_long %>%
     legend_label = paste(built_type_clean, zone_clean)
   )
 
-# colors for ggplot
+#colors for ggplot
 built_colors <- c(
   "Residential Urban" = "red",
   "Residential Rural" = "green",
@@ -654,7 +530,7 @@ built_colors <- c(
   "Non-Residential Rural" = "blue"
 )
 
-# Phoenix
+#phoenix
 phoenix_data <- built_long %>% filter(city == "Phoenix")
 ggplot(phoenix_data, aes(x = year, y = built_pct, color = legend_label)) +
   geom_line(size = 1) +
@@ -669,7 +545,7 @@ ggplot(phoenix_data, aes(x = year, y = built_pct, color = legend_label)) +
   scale_color_manual(values = built_colors) +
   ylim(0, 50)
 
-# Chicago
+#chicago
 chicago_data <- built_long %>% filter(city == "Chicago")
 ggplot(chicago_data, aes(x = year, y = built_pct, color = legend_label)) +
   geom_line(size = 1) +
@@ -684,7 +560,7 @@ ggplot(chicago_data, aes(x = year, y = built_pct, color = legend_label)) +
   scale_color_manual(values = built_colors) +
   ylim(0, 50)
 
-# New York City
+#new york city
 nyc_data <- built_long %>% filter(city == "New York City")
 ggplot(nyc_data, aes(x = year, y = built_pct, color = legend_label)) +
   geom_line(size = 1) +
@@ -969,7 +845,7 @@ print(master_df)
 
 #PLOTS
 
-limits_df <- master_df %>%
+limits_df <- master_df %>%     #for appropriate xlim and ylim for each plot
   group_by(city) %>%
   summarise(
     ndvi_min = min(ndvi_urban, na.rm = TRUE),
@@ -992,12 +868,40 @@ limits_df <- master_df %>%
     uhi_max = uhi_max + 0.05*(uhi_max-uhi_min)
   )
 
-# A) UHI over time with trendline
+# A)LST over time
+#pivot urban and rural LST to long format
+lst_long <- master_df %>%
+  select(city, year, lst_urban, lst_rural) %>%
+  pivot_longer(cols = c(lst_urban, lst_rural),
+               names_to = "zone", values_to = "lst")
+
+#plot
+ggplot(lst_long, aes(x = year, y = lst, color = zone)) +
+  geom_line(size = 1.1) +
+  geom_point(size = 2) +
+  geom_smooth(aes(group=1), method = "lm", se = FALSE, color = "black", linetype = "dashed", size = 1) +
+  facet_wrap(~city) +
+  scale_color_manual(values = c("lst_urban"="#E76F51", "lst_rural"="#457B9D"),
+                     labels = c("Urban LST", "Rural LST")) +
+  theme_minimal() +
+  labs(
+    title = "Urban vs Rural LST (2000-2025)",
+    x = "Year",
+    y = "LST (°F)",
+    color = "Zone"
+  ) +
+  theme(
+    panel.border = element_rect(colour = "gray50", fill = NA, linewidth = 0.5),
+    strip.background = element_rect(fill = "gray90", colour = "gray50", linewidth = 0.5)
+  )
+
+
+#B)UHI over time with trendline
 ggplot(master_df, aes(x = year, y = uhi, color = city)) +
   geom_line(linewidth = 1.1) + 
   geom_point() +
   
-  # pooled (all-cities) trendline
+  # all-cities trendline
   geom_smooth(
     aes(group = 1),
     method = "lm",
@@ -1029,7 +933,7 @@ master_df %>%
     ndvi_diff_mean = mean(ndvi_urban - ndvi_rural, na.rm = TRUE)
   )
 
-#B) NDVI over time (urban vs rural)
+#C) NDVI over time (urban vs rural)
 ndvi_long <- master_df %>%
   select(city, year, ndvi_urban, ndvi_rural) %>%
   pivot_longer(cols = c(ndvi_urban, ndvi_rural),
@@ -1065,7 +969,7 @@ ggplot(ndvi_diff_long, aes(year, ndvi_diff, color = city)) +
     x = "Year"
   )
 
-#C) Built-up density over time
+#D) Built-up density over time
 built_long <- master_df %>%
   select(city, year, built_urban, built_rural) %>%
   pivot_longer(cols = c(built_urban, built_rural),
@@ -1085,7 +989,7 @@ ggplot(built_long, aes(year, built, color = zone)) +
     strip.background = element_rect(fill = "gray90", colour = "gray50", linewidth = 0.5)
   )
 
-#D) Urban LST vs NDVI
+#E) Urban LST vs NDVI
 ggplot(master_df %>% filter(city == "Phoenix"), 
        aes(ndvi_urban, lst_urban)) +
   geom_point(color = "#E76F51") +
@@ -1234,32 +1138,4 @@ ggplot(master_df, aes(x = uhi_pred, y = uhi)) +
   )
 
 save(master_df_unfiltered, file="allData.Rda")
-
-#LST over time
-#pivot urban and rural LST to long format
-lst_long <- master_df %>%
-  select(city, year, lst_urban, lst_rural) %>%
-  pivot_longer(cols = c(lst_urban, lst_rural),
-               names_to = "zone", values_to = "lst")
-
-#plot
-ggplot(lst_long, aes(x = year, y = lst, color = zone)) +
-  geom_line(size = 1.1) +
-  geom_point(size = 2) +
-  geom_smooth(aes(group=1), method = "lm", se = FALSE, color = "black", linetype = "dashed", size = 1) +
-  facet_wrap(~city) +
-  scale_color_manual(values = c("lst_urban"="#E76F51", "lst_rural"="#457B9D"),
-                     labels = c("Urban LST", "Rural LST")) +
-  theme_minimal() +
-  labs(
-    title = "Urban vs Rural LST (2000-2025)",
-    x = "Year",
-    y = "LST (°F)",
-    color = "Zone"
-  ) +
-  theme(
-    panel.border = element_rect(colour = "gray50", fill = NA, linewidth = 0.5),
-    strip.background = element_rect(fill = "gray90", colour = "gray50", linewidth = 0.5)
-  )
-
 
